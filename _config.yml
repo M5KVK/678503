@@ -1,0 +1,30 @@
+title: AllStarLink Node 678503
+description: >-
+  Node information, disclosures, and change history for AllStarLink node
+  678503, operated by M5KVK.
+theme: minima
+minima:
+  skin: classic
+show_excerpts: false
+
+# Node identity (Starter Kit v1.2) — type your node number and callsign
+# ONCE here, as plain text (Jekyll can't run templating inside this file,
+# so this and the title/description above are the only two literal spots
+# in this file). Every other page in the kit pulls these in automatically
+# via {{ site.node_number }} and {{ site.callsign }} — no more hunting
+# through every file to update a number.
+node_number: "678503"
+callsign: "M5KVK"
+
+# Simple manual nav — minima will list any page below that has a title
+# and isn't excluded, in the order they're listed here.
+header_pages:
+  - about.md
+  - disclaimers.md
+  - changelog.md
+
+plugins:
+  - jekyll-feed
+
+exclude:
+  - README.md

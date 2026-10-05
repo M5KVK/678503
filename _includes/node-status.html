@@ -1,0 +1,128 @@
+{%- comment -%}
+node-status v1.2
+Live status pill for an AllStarLink node page on GitHub Pages / Jekyll.
+Call it with no arguments — {% include node-status.html %} — and it uses
+site.node_number from _config.yml automatically. Pass node="NUMBER" on a
+specific page if you ever want to override that (e.g. to show a different
+node's status). Optional: stale="30" changes how many minutes without a
+report counts as offline (default 15).
+It runs in the visitor's browser: it reads the public AllStarLink stats API,
+checks when the node last reported in, and shows Online / Offline / Unavailable.
+Auto-checks on page load and every 5 minutes while the tab is open;
+the "Check now" button runs the same check immediately.
+Changes from v1.1: defaults to site.node_number when no node= is passed,
+so most pages don't need to specify it at all.
+{%- endcomment -%}
+{%- assign ns_node = include.node | default: site.node_number | default: "" | strip -%}
+{%- assign ns_stale = include.stale | default: 15 | plus: 0 -%}
+{%- if ns_node == "" -%}
+<p><strong>node-status:</strong> set node_number in _config.yml, or pass node="123456" to this include tag.</p>
+{%- else -%}
+<style>
+.ns-box{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .9rem;margin:1rem 0;padding:.6rem .9rem;border:1px solid #d0d7de;border-radius:8px;background:#f6f8fa;font-size:.95rem}
+.ns-pill{display:inline-flex;align-items:center;gap:.4rem;padding:.15rem .7rem;border-radius:999px;font-weight:600;border:1px solid transparent}
+.ns-dot{width:.6rem;height:.6rem;border-radius:50%;background:currentColor}
+.ns-up{color:#116329;background:#dafbe1;border-color:#4ac26b}
+.ns-down{color:#82071e;background:#ffebe9;border-color:#ff8182}
+.ns-unk{color:#57606a;background:#eaeef2;border-color:#afb8c1}
+.ns-detail{color:#57606a;flex:1 1 14rem}
+.ns-btn{font:inherit;padding:.25rem .8rem;border:1px solid #afb8c1;border-radius:6px;background:#fff;color:#24292f;cursor:pointer}
+.ns-btn:disabled{opacity:.6;cursor:default}
+.ns-btn:focus-visible{outline:2px solid #0969da;outline-offset:2px}
+</style>
+<div class="ns-box" id="ns-{{ ns_node | escape }}">
+<span class="ns-pill ns-unk"><span class="ns-dot" aria-hidden="true"></span><span class="ns-label">Status needs JavaScript</span></span>
+<span class="ns-detail" role="status" aria-live="polite"><a href="https://stats.allstarlink.org/stats/{{ ns_node | escape }}">View node {{ ns_node | escape }} on AllStarLink stats</a></span>
+<button type="button" class="ns-btn">Check now</button>
+</div>
+<script>
+(function () {
+  var NODE = String({{ ns_node | jsonify | remove: "<" }});
+  var STALE_MIN = {{ ns_stale }};  // no report for this many minutes = shown as offline
+  var REFRESH_MIN = 5;             // automatic re-check interval while the tab is visible
+  if (!(STALE_MIN > 0)) STALE_MIN = 15;
+  var box = document.getElementById("ns-" + NODE);
+  if (!box) return;
+  var pill = box.querySelector(".ns-pill");
+  var label = box.querySelector(".ns-label");
+  var detail = box.querySelector(".ns-detail");
+  var btn = box.querySelector(".ns-btn");
+  var busy = false;
+
+  function ago(sec) {
+    if (sec < 90) return "under a minute ago";
+    if (sec < 5400) return Math.round(sec / 60) + " min ago";
+    if (sec < 172800) return Math.round(sec / 3600) + " hr ago";
+    return Math.round(sec / 86400) + " days ago";
+  }
+  function dur(sec) {
+    var d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+    if (d > 0) return d + "d " + h + "h";
+    if (h > 0) return h + "h " + m + "m";
+    return m + "m";
+  }
+  function show(kind, text, info) {
+    pill.className = "ns-pill ns-" + kind;
+    label.textContent = text;
+    var t = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    detail.textContent = info + " Checked " + t + ".";
+  }
+  function done() {
+    busy = false;
+    btn.disabled = false;
+    btn.textContent = "Check now";
+  }
+  function check() {
+    if (busy) return;
+    busy = true;
+    btn.disabled = true;
+    btn.textContent = "Checking…";
+    var ctl = new AbortController();
+    var timer = setTimeout(function () { ctl.abort(); }, 10000);
+    fetch("https://stats.allstarlink.org/api/stats/" + encodeURIComponent(NODE), { cache: "no-store", signal: ctl.signal })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        clearTimeout(timer);
+        var st = d.stats || {};
+        var data = st.data || {};
+        var node = d.node || {};
+        var reported = Number(data.time);
+        if (!reported && st.updated_at) reported = Date.parse(st.updated_at) / 1000;
+        if (!reported || isNaN(reported)) {
+          show("unk", "Status unavailable", "AllStarLink has no report for this node. That does not by itself mean it is down.");
+          return;
+        }
+        var age = Math.max(0, Math.floor(Date.now() / 1000 - reported));
+        if (node.Status && node.Status !== "Active") {
+          show("down", "Not active", "AllStarLink lists this node as " + node.Status + ".");
+          return;
+        }
+        if (age > STALE_MIN * 60) {
+          show("down", "Offline or not reporting", "Last report from the node was " + ago(age) + ".");
+          return;
+        }
+        var bits = ["Last report " + ago(age) + "."];
+        var up = Number(data.apprptuptime);
+        if (up > 0) bits.push("Up " + dur(up) + ".");
+        if (Array.isArray(data.linkedNodes)) {
+          bits.push(data.linkedNodes.length === 0 ? "No links right now." : data.linkedNodes.length + " linked.");
+        }
+        show("up", "Online", bits.join(" "));
+      })
+      .catch(function () {
+        clearTimeout(timer);
+        show("unk", "Status unavailable", "Could not reach AllStarLink stats. That does not mean the node is down.");
+      })
+      .then(done);
+  }
+
+  btn.addEventListener("click", check);
+  check();
+  setInterval(function () { if (!document.hidden) check(); }, REFRESH_MIN * 60000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) check(); });
+})();
+</script>
+{%- endif -%}
