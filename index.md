@@ -1,6 +1,6 @@
 ---
 layout: home
-title: AllStarLink Node [NODE NUMBER]
+title: AllStarLink Node 678503
 ---
 
 This page is maintained by {{ site.callsign }} as the off-node reference for
